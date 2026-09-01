@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "极简书签 (Quick Bookmarks)",
+  "version": "1.0.0",
+  "description": "类似 Popup my Bookmarks 的轻量气泡弹窗，秒开流畅，零白屏，支持即时搜索与层级折叠。",
+  "permissions": [
+    "bookmarks",
+    "favicon"
+  ],
+  "action": {
+    "default_title": "我的书签",
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
+

@@ -1,0 +1,56 @@
+﻿<!DOCTYPE html>
+<html lang=zh-CN>
+<head>
+  <meta charset=UTF-8>
+  <meta name=viewport content=width=device-width, initial-scale=1.0>
+  <title>书签侧边栏</title>
+  <link rel=stylesheet href=sidepanel.css>
+</head>
+<body>
+  <header class=app-header>
+    <div class=search-box>
+      <svg class=search-icon viewBox=0 0 24 24 width=16 height=16>
+        <path fill=currentColor d=M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z/>
+      </svg>
+      <input type=text id=search-input placeholder=搜索书签 (Ctrl+F)... autocomplete=off />
+      <button id=clear-search class=icon-btn hidden title=清空搜索>✕</button>
+    </div>
+    <div class=toolbar>
+      <button id=btn-expand-all class=tool-btn title=全部展开>
+        <svg viewBox=0 0 24 24 width=14 height=14><path fill=currentColor d=M12 4l-8 8h6v8h4v-8h6z/></svg>
+        <span>全部展开</span>
+      </button>
+      <button id=btn-collapse-all class=tool-btn title=全部折叠>
+        <svg viewBox=0 0 24 24 width=14 height=14><path fill=currentColor d=M12 20l8-8h-6V4h-4v8H4z/></svg>
+        <span>全部折叠</span>
+      </button>
+      <button id=btn-open-manager class=tool-btn title=打开书签管理器>
+        <svg viewBox=0 0 24 24 width=14 height=14><path fill=currentColor d=M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z/></svg>
+        <span>管理器</span>
+      </button>
+    </div>
+  </header>
+
+  <main id=bookmark-container class=tree-container>
+    <div class=loading-state>
+      <div class=spinner></div>
+      <p>正在加载书签...</p>
+    </div>
+  </main>
+
+  <div id=search-results-container class=tree-container hidden>
+    <!-- 搜索结果列表 -->
+  </div>
+
+  <!-- 自定义右键菜单 -->
+  <div id=context-menu class=context-menu hidden>
+    <div class=menu-item data-action=open-current>在当前标签页打开</div>
+    <div class=menu-item data-action=open-new-tab>在新标签页打开</div>
+    <div class=menu-item data-action=open-bg-tab>在后台打开</div>
+    <div class=menu-divider></div>
+    <div class=menu-item data-action=copy-url>复制链接地址</div>
+  </div>
+
+  <script src=sidepanel.js></script>
+</body>
+</html>
