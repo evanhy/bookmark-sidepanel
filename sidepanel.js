@@ -46,7 +46,7 @@ function createNodeElement(node, depth = 0) {
   rowEl.title = node.title || (node.url ? node.url : '未命名');
 
   if (isFolder) {
-    const isExpanded = expandedFolders.has(node.id) || (depth === 0 && expandedFolders.size === 0);
+    const isExpanded = expandedFolders.has(node.id);
     if (isExpanded && node.id) {
       expandedFolders.add(node.id);
     }
@@ -169,15 +169,22 @@ async function loadBookmarkTree() {
     container.innerHTML = '';
     const fragment = document.createDocumentFragment();
 
-    // 兼容所有 Chrome 根结构：如果是 root 节点，则遍历其所有 children；否则直接遍历
     const rootNodes = (tree && tree.length > 0 && tree[0].children) ? tree[0].children : tree;
+    // 找到书签栏节点 (Chrome 默认 id 为 '1')
+    const bookmarkBar = Array.isArray(rootNodes)
+      ? (rootNodes.find(n => n.id === '1') || rootNodes[0])
+      : null;
 
-    if (!rootNodes || rootNodes.length === 0) {
-      container.innerHTML = '<div class="empty-state"><p>暂无书签</p></div>';
+    const displayNodes = (bookmarkBar && Array.isArray(bookmarkBar.children))
+      ? bookmarkBar.children
+      : (Array.isArray(rootNodes) ? rootNodes : []);
+
+    if (!displayNodes || displayNodes.length === 0) {
+      container.innerHTML = '<div class="empty-state"><p>书签栏暂无书签</p></div>';
       return;
     }
 
-    for (const root of rootNodes) {
+    for (const root of displayNodes) {
       const el = createNodeElement(root, 0);
       if (el) fragment.appendChild(el);
     }

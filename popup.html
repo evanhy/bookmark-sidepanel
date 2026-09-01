@@ -7,41 +7,29 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <header class="app-header">
-    <div class="search-box">
-      <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16">
-        <path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
-      </svg>
-      <input type="text" id="search-input" placeholder="快速搜索书签..." autocomplete="off" autofocus />
-      <span class="search-shortcut">Ctrl F</span>
-      <button id="clear-search" class="icon-btn hidden" title="清空搜索">✕</button>
+  <div id="pmb-app" class="pmb-app">
+    <!-- 级联多列面板容器 (Popup my Bookmarks 模式) -->
+    <div id="pmb-panels-container" class="pmb-panels-container">
+      <div class="loading-state"><div class="spinner"></div><p>正在加载书签...</p></div>
     </div>
-    <div class="toolbar">
-      <button id="btn-expand-all" class="tool-btn" title="全部展开">
-        <svg viewBox="0 0 24 24" width="13" height="13"><path fill="currentColor" d="M12 4l-8 8h6v8h4v-8h6z"/></svg>
-        <span>全部展开</span>
-      </button>
-      <button id="btn-collapse-all" class="tool-btn" title="全部折叠">
-        <svg viewBox="0 0 24 24" width="13" height="13"><path fill="currentColor" d="M12 20l8-8h-6V4h-4v8H4z"/></svg>
-        <span>全部折叠</span>
-      </button>
-      <button id="btn-open-manager" class="tool-btn" title="打开原生书签管理器">
-        <svg viewBox="0 0 24 24" width="13" height="13"><path fill="currentColor" d="M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
-        <span>管理器</span>
-      </button>
+
+    <!-- 树状折叠备用容器 -->
+    <div id="pmb-tree-container" class="pmb-tree-container hidden">
+      <div class="pmb-header root-header">
+        <span class="header-title">书签栏</span>
+        <div class="header-tools">
+          <button id="btn-tree-expand" class="h-btn" title="全部展开">展开</button>
+          <button id="btn-tree-collapse" class="h-btn" title="全部折叠">折叠</button>
+          <button id="btn-switch-to-cascade" class="h-btn" title="切换到级联面板模式">级联模式</button>
+          <button id="btn-tree-manager" class="h-btn" title="书签管理器">⚙</button>
+        </div>
+      </div>
+      <div class="search-box-wrap">
+        <input type="text" id="tree-search-input" class="search-input" placeholder="快速搜索书签..." autocomplete="off" />
+        <button id="clear-tree-search" class="clear-btn hidden">✕</button>
+      </div>
+      <div id="tree-list" class="tree-list"></div>
     </div>
-  </header>
-
-
-  <main id="bookmark-container" class="tree-container">
-    <div class="loading-state">
-      <div class="spinner"></div>
-      <p>正在加载书签...</p>
-    </div>
-  </main>
-
-  <div id="search-results-container" class="tree-container hidden">
-    <!-- 搜索结果列表 -->
   </div>
 
   <!-- 书签项右键菜单 -->
@@ -85,7 +73,7 @@
       <span>打开全部书签</span>
     </div>
     <div class="menu-item" data-action="open-all-window">
-      <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/></svg>
+      <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/></svg>
       <span>在新窗口中全部打开</span>
     </div>
     <div class="menu-divider"></div>
@@ -104,7 +92,7 @@
     </div>
   </div>
 
-  <!-- 编辑 / 新建模态对话框 -->
+  <!-- 编辑模态对话框 -->
   <div id="edit-modal" class="modal-backdrop hidden">
     <div class="modal-dialog">
       <h3 id="modal-title" class="modal-title">编辑书签</h3>
@@ -126,4 +114,3 @@
   <script src="popup.js"></script>
 </body>
 </html>
-
