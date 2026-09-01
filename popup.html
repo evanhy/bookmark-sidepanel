@@ -91,6 +91,102 @@
     </div>
   </div>
 
+  <!-- 设置模态对话框 -->
+  <div id="settings-modal" class="modal-backdrop hidden">
+    <div class="modal-dialog settings-dialog">
+      <div class="modal-header-row">
+        <h3 class="modal-title">⚙ 插件设置</h3>
+        <button id="btn-settings-close" class="modal-close-btn" title="关闭">✕</button>
+      </div>
+      <div class="modal-form settings-form">
+        <!-- 尺寸与外观 -->
+        <div class="settings-section-title">外观与尺寸</div>
+        
+        <div class="setting-row">
+          <label for="setting-panel-width">面板宽度</label>
+          <div class="setting-ctrl">
+            <input type="number" id="setting-panel-width" min="160" max="400" step="10" value="230" class="modal-input-number" />
+            <span class="setting-unit">px</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <label for="setting-popup-height">弹窗高度</label>
+          <div class="setting-ctrl">
+            <input type="number" id="setting-popup-height" min="300" max="600" step="20" value="520" class="modal-input-number" />
+            <span class="setting-unit">px</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <label for="setting-item-height">单项行高</label>
+          <select id="setting-item-height" class="modal-select">
+            <option value="20">超紧凑 (20px)</option>
+            <option value="22" selected>紧凑 (22px 默认)</option>
+            <option value="25">舒适 (25px)</option>
+            <option value="28">宽松 (28px)</option>
+          </select>
+        </div>
+
+        <div class="setting-row">
+          <label for="setting-font-size">字体大小</label>
+          <select id="setting-font-size" class="modal-select">
+            <option value="11">小 (11px)</option>
+            <option value="12" selected>标准 (12px 默认)</option>
+            <option value="13">大 (13px)</option>
+            <option value="14">超大 (14px)</option>
+          </select>
+        </div>
+
+        <!-- 打开与交互 -->
+        <div class="settings-section-title">交互与行为</div>
+
+        <div class="setting-row">
+          <label for="setting-open-target">左键点击打开方式</label>
+          <select id="setting-open-target" class="modal-select">
+            <option value="current" selected>在当前标签页打开</option>
+            <option value="new-active">在新标签页(前台)打开</option>
+            <option value="new-bg">在后台标签页打开</option>
+          </select>
+        </div>
+
+        <div class="setting-row">
+          <label for="setting-hover-delay">悬停展开延时</label>
+          <select id="setting-hover-delay" class="modal-select">
+            <option value="0">极速 (0ms)</option>
+            <option value="50" selected>快速 (50ms 默认)</option>
+            <option value="140">标准 (140ms)</option>
+            <option value="-1">仅点击时展开</option>
+          </select>
+        </div>
+
+        <div class="setting-row checkbox-row">
+          <label for="setting-show-other-bookmarks">根列表置顶“其他书签”</label>
+          <input type="checkbox" id="setting-show-other-bookmarks" checked />
+        </div>
+
+        <div class="setting-row checkbox-row">
+          <label for="setting-prettify-separators">美化带文字的分类分隔条</label>
+          <input type="checkbox" id="setting-prettify-separators" checked />
+        </div>
+
+        <!-- 快捷键 -->
+        <div class="settings-section-title">快捷键</div>
+        <div class="setting-shortcut-box">
+          <div class="shortcut-tip">
+            弹出快捷键建议：<strong>⌘ + E</strong> (Mac) / <strong>Alt + E</strong> (Win)
+          </div>
+          <button id="btn-open-shortcuts" class="btn btn-secondary btn-sm">⚙ 自定义弹出快捷键</button>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="btn-settings-reset" class="btn btn-secondary">恢复默认</button>
+        <button id="btn-settings-save" class="btn btn-primary">保存设置</button>
+      </div>
+    </div>
+  </div>
+
   <script src="popup.js"></script>
 </body>
 </html>

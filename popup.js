@@ -1,5 +1,56 @@
 // 极简书签弹窗 popup.js - 忠实还原 Popup my Bookmarks (PmB) 交互
 
+const DEFAULT_SETTINGS = {
+  panelWidth: 230,
+  popupHeight: 520,
+  itemHeight: 22,
+  fontSize: 12,
+  openTarget: 'current', // 'current' | 'new-active' | 'new-bg'
+  hoverDelay: 50, // 0 | 50 | 140 | -1 (click only)
+  showOtherBookmarks: true,
+  prettifySeparators: true
+};
+
+let userSettings = { ...DEFAULT_SETTINGS };
+
+async function loadUserSettings() {
+  try {
+    if (chrome.storage && chrome.storage.sync) {
+      const stored = await chrome.storage.sync.get('quick_bookmarks_settings');
+      if (stored && stored.quick_bookmarks_settings) {
+        userSettings = { ...DEFAULT_SETTINGS, ...stored.quick_bookmarks_settings };
+      }
+    } else {
+      const local = localStorage.getItem('quick_bookmarks_settings');
+      if (local) userSettings = { ...DEFAULT_SETTINGS, ...JSON.parse(local) };
+    }
+  } catch (e) {
+    console.warn('加载设置失败，使用默认配置', e);
+  }
+  applySettingsToUI();
+}
+
+function applySettingsToUI() {
+  const root = document.documentElement;
+  root.style.setProperty('--panel-width', `${userSettings.panelWidth}px`);
+  root.style.setProperty('--popup-height', `${userSettings.popupHeight}px`);
+  root.style.setProperty('--item-height', `${userSettings.itemHeight}px`);
+  root.style.setProperty('--app-font-size', `${userSettings.fontSize}px`);
+}
+
+async function saveUserSettings(newSettings) {
+  userSettings = { ...newSettings };
+  applySettingsToUI();
+  try {
+    if (chrome.storage && chrome.storage.sync) {
+      await chrome.storage.sync.set({ 'quick_bookmarks_settings': userSettings });
+    } else {
+      localStorage.setItem('quick_bookmarks_settings', JSON.stringify(userSettings));
+    }
+  } catch (e) {}
+  loadBookmarkTree();
+}
+
 let bookmarkTreeData = [];
 let bookmarkBarNode = null;
 let currentViewMode = localStorage.getItem('bookmark_view_mode_') || 'cascade'; // 'cascade' | 'tree'
@@ -298,8 +349,8 @@ function populatePanelList(listEl, folderNode, depth) {
   listEl.innerHTML = '';
   let children = [...(folderNode.children || [])];
 
-  // 如果是根面板且存在其他书签(id='2')且有子项，置于列表顶部
-  if (depth === 0 && otherBookmarksNode && otherBookmarksNode.children && otherBookmarksNode.children.length > 0) {
+  // 如果是根面板且开启了置顶其他书签(id='2')且有子项，置于列表顶部
+  if (depth === 0 && userSettings.showOtherBookmarks && otherBookmarksNode && otherBookmarksNode.children && otherBookmarksNode.children.length > 0) {
     if (!children.some(c => c.id === otherBookmarksNode.id)) {
       children = [otherBookmarksNode, ...children];
     }
@@ -314,7 +365,7 @@ function populatePanelList(listEl, folderNode, depth) {
 
   for (const item of children) {
     const sepInfo = parseSeparatorInfo(item.title);
-    if (sepInfo) {
+    if (sepInfo && userSettings.prettifySeparators) {
       const sepEl = document.createElement('div');
       sepEl.className = 'pmb-item ' + (sepInfo.type === 'pure' ? 'is-separator' : 'is-section-separator');
       sepEl.dataset.id = item.id;
@@ -380,16 +431,18 @@ function populatePanelList(listEl, folderNode, depth) {
       arrowEl.textContent = ICONS.arrowLeft;
       itemEl.appendChild(arrowEl);
 
-      // 悬停逻辑
+      // 悬停逻辑 (按配置延时)
       itemEl.addEventListener('mouseenter', () => {
         if (isSearching) return;
         clearTimeout(hoverCloseTimer);
         clearTimeout(hoverOpenTimer);
-        hoverOpenTimer = setTimeout(() => {
-          listEl.querySelectorAll('.pmb-item').forEach(el => el.classList.remove('active'));
-          itemEl.classList.add('active');
-          appendCascadePanel(item, depth + 1);
-        }, 50);
+        if (userSettings.hoverDelay >= 0) {
+          hoverOpenTimer = setTimeout(() => {
+            listEl.querySelectorAll('.pmb-item').forEach(el => el.classList.remove('active'));
+            itemEl.classList.add('active');
+            appendCascadePanel(item, depth + 1);
+          }, userSettings.hoverDelay);
+        }
       });
 
       itemEl.addEventListener('click', (e) => {
@@ -428,10 +481,18 @@ function populatePanelList(listEl, folderNode, depth) {
         }, 140);
       });
 
+      // 按照用户设置打开目标
       itemEl.addEventListener('click', (e) => {
         e.preventDefault();
         if (e.ctrlKey || e.metaKey) {
           chrome.tabs.create({ url: item.url, active: false });
+          return;
+        }
+        if (userSettings.openTarget === 'new-bg') {
+          chrome.tabs.create({ url: item.url, active: false });
+        } else if (userSettings.openTarget === 'new-active') {
+          chrome.tabs.create({ url: item.url, active: true });
+          window.close();
         } else {
           chrome.tabs.update({ url: item.url });
           window.close();
@@ -515,10 +576,17 @@ function appendCascadePanel(folderNode, depth) {
     switchBtn.addEventListener('click', () => applyViewMode('tree'));
     toolsEl.appendChild(switchBtn);
 
+    const settingsBtn = document.createElement('button');
+    settingsBtn.className = 'h-btn';
+    settingsBtn.title = '插件设置 (宽高/快捷键/交互)';
+    settingsBtn.textContent = '⚙ 设置';
+    settingsBtn.addEventListener('click', () => openSettingsModal());
+    toolsEl.appendChild(settingsBtn);
+
     const mgrBtn = document.createElement('button');
     mgrBtn.className = 'h-btn';
     mgrBtn.title = '打开原生书签管理器';
-    mgrBtn.textContent = '⚙';
+    mgrBtn.textContent = '📑';
     mgrBtn.addEventListener('click', () => {
       chrome.tabs.create({ url: 'chrome://bookmarks' });
       window.close();
@@ -1381,6 +1449,83 @@ editModal.addEventListener('keydown', (e) => {
   }
 });
 
+// ----------------------------------------------------
+// 5. 设置对话框与快捷键配置
+// ----------------------------------------------------
+const settingsModal = document.getElementById('settings-modal');
+const settingPanelWidth = document.getElementById('setting-panel-width');
+const settingPopupHeight = document.getElementById('setting-popup-height');
+const settingItemHeight = document.getElementById('setting-item-height');
+const settingFontSize = document.getElementById('setting-font-size');
+const settingOpenTarget = document.getElementById('setting-open-target');
+const settingHoverDelay = document.getElementById('setting-hover-delay');
+const settingShowOtherBookmarks = document.getElementById('setting-show-other-bookmarks');
+const settingPrettifySeparators = document.getElementById('setting-prettify-separators');
+
+function openSettingsModal() {
+  settingPanelWidth.value = userSettings.panelWidth || 230;
+  settingPopupHeight.value = userSettings.popupHeight || 520;
+  settingItemHeight.value = String(userSettings.itemHeight || 22);
+  settingFontSize.value = String(userSettings.fontSize || 12);
+  settingOpenTarget.value = userSettings.openTarget || 'current';
+  settingHoverDelay.value = String(typeof userSettings.hoverDelay === 'number' ? userSettings.hoverDelay : 50);
+  settingShowOtherBookmarks.checked = Boolean(userSettings.showOtherBookmarks);
+  settingPrettifySeparators.checked = Boolean(userSettings.prettifySeparators);
+
+  settingsModal.classList.remove('hidden');
+}
+
+function closeSettingsModal() {
+  settingsModal.classList.add('hidden');
+}
+
+document.getElementById('btn-settings-close').addEventListener('click', () => closeSettingsModal());
+
+document.getElementById('btn-settings-save').addEventListener('click', async () => {
+  let pw = parseInt(settingPanelWidth.value, 10);
+  let ph = parseInt(settingPopupHeight.value, 10);
+  if (isNaN(pw) || pw < 160) pw = 160;
+  if (pw > 500) pw = 500;
+  if (isNaN(ph) || ph < 300) ph = 300;
+  if (ph > 600) ph = 600;
+
+  const newSettings = {
+    panelWidth: pw,
+    popupHeight: ph,
+    itemHeight: parseInt(settingItemHeight.value, 10) || 22,
+    fontSize: parseInt(settingFontSize.value, 10) || 12,
+    openTarget: settingOpenTarget.value || 'current',
+    hoverDelay: parseInt(settingHoverDelay.value, 10),
+    showOtherBookmarks: settingShowOtherBookmarks.checked,
+    prettifySeparators: settingPrettifySeparators.checked
+  };
+
+  await saveUserSettings(newSettings);
+  closeSettingsModal();
+});
+
+document.getElementById('btn-settings-reset').addEventListener('click', async () => {
+  if (confirm('确定要恢复所有设置到默认值吗？')) {
+    await saveUserSettings(DEFAULT_SETTINGS);
+    openSettingsModal();
+  }
+});
+
+document.getElementById('btn-open-shortcuts').addEventListener('click', () => {
+  chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
+  window.close();
+});
+
+settingsModal.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    document.getElementById('btn-settings-save').click();
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    closeSettingsModal();
+  }
+});
+
 // 快捷键 Ctrl+F
 document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
@@ -1425,6 +1570,7 @@ if (chrome.bookmarks && chrome.bookmarks.onCreated) {
   chrome.bookmarks.onMoved.addListener(() => loadBookmarkTree());
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadUserSettings();
   loadBookmarkTree();
 });

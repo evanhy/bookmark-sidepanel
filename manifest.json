@@ -5,7 +5,8 @@
   "description": "类似 Popup my Bookmarks 的轻量气泡弹窗，秒开流畅，零白屏，支持即时搜索与层级折叠。",
   "permissions": [
     "bookmarks",
-    "favicon"
+    "favicon",
+    "storage"
   ],
   "action": {
     "default_title": "我的书签",
