@@ -1,29 +1,31 @@
 :root {
   --root-blue: #1976d2;
-  --sub-orange: #f57c00;
+  --sub-header-bg: #1e88e5;
   --active-orange: #f57c00;
   --active-blue: #1976d2;
   --bg-primary: #ffffff;
   --bg-secondary: #f8f9fa;
-  --bg-hover: #eef2f7;
+  --bg-hover: #f1f3f4;
+  --bg-selected: #e8f0fe;
   --text-primary: #202124;
   --text-secondary: #5f6368;
   --text-muted: #80868b;
   --border-color: #dadce0;
   --border-light: #eceff1;
-  --folder-color: #fbc02d;
-  --panel-width: 245px;
+  --folder-color: #f59e0b;
+  --panel-width: 230px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --root-blue: #1565c0;
-    --sub-orange: #e65100;
+    --sub-header-bg: #1976d2;
     --active-orange: #e65100;
     --active-blue: #1565c0;
     --bg-primary: #202124;
     --bg-secondary: #292a2d;
     --bg-hover: #35363a;
+    --bg-selected: #2d3748;
     --text-primary: #e8eaed;
     --text-secondary: #9aa0a6;
     --text-muted: #70757a;
@@ -42,13 +44,13 @@
 
 html, body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
-  font-size: 12.5px;
-  line-height: 1.4;
+  font-size: 12px;
+  line-height: 1.3;
   color: var(--text-primary);
   background-color: var(--bg-primary);
   width: max-content;
   min-width: var(--panel-width);
-  max-width: 800px;
+  max-width: 850px;
   height: 520px;
   max-height: 560px;
   overflow: hidden;
@@ -63,7 +65,6 @@ html, body {
 }
 
 /* 级联多面板容器：从右往左弹出 (row-reverse) */
-/* 根面板固定在最右侧，子面板向左侧弹出，鼠标在主界面悬浮时绝对不会引起界面跳动 */
 .pmb-panels-container {
   display: flex;
   flex-direction: row-reverse;
@@ -74,7 +75,7 @@ html, body {
 }
 
 .pmb-panels-container::-webkit-scrollbar {
-  height: 4px;
+  height: 3px;
 }
 .pmb-panels-container::-webkit-scrollbar-thumb {
   background: var(--border-color);
@@ -99,17 +100,17 @@ html, body {
   border-right: none;
 }
 
-/* 面板头部 */
+/* 面板头部 - 紧凑型 */
 .pmb-header {
-  height: 32px;
-  min-height: 32px;
+  height: 25px;
+  min-height: 25px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px 0 10px;
+  padding: 0 6px 0 8px;
   color: #ffffff;
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
   user-select: none;
   flex-shrink: 0;
 }
@@ -119,7 +120,7 @@ html, body {
 }
 
 .pmb-header.sub-header {
-  background-color: var(--sub-orange);
+  background-color: var(--sub-header-bg);
 }
 
 .header-title {
@@ -132,7 +133,7 @@ html, body {
 .header-tools {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   flex-shrink: 0;
 }
 
@@ -140,23 +141,29 @@ html, body {
   background: rgba(255, 255, 255, 0.2);
   color: #ffffff;
   border: none;
-  border-radius: 3px;
-  padding: 2px 6px;
-  font-size: 11px;
+  border-radius: 2px;
+  padding: 1px 4px;
+  font-size: 10.5px;
   cursor: pointer;
   transition: background 0.1s;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  line-height: 1.2;
 }
 
 .h-btn:hover {
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.38);
 }
 
-/* 搜索框 */
+.h-btn-close {
+  padding: 1px 5px;
+  font-size: 11px;
+}
+
+/* 紧凑搜索框 */
 .search-box-wrap {
-  padding: 5px 8px;
+  padding: 3px 6px;
   border-bottom: 1px solid var(--border-light);
   background-color: var(--bg-secondary);
   display: flex;
@@ -167,18 +174,19 @@ html, body {
 
 .search-input {
   width: 100%;
-  height: 25px;
+  height: 22px;
   border: 1px solid var(--border-color);
-  border-radius: 4px;
-  padding: 0 22px 0 24px;
-  font-size: 12px;
+  border-radius: 3px;
+  padding: 0 18px 0 20px;
+  font-size: 11.5px;
   outline: none;
   background-color: var(--bg-primary);
   color: var(--text-primary);
   font-family: inherit;
-  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="%2380868b"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 14z"/></svg>');
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="%2380868b"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 14z"/></svg>');
   background-repeat: no-repeat;
-  background-position: 6px center;
+  background-position: 5px center;
+  background-size: 11px 11px;
 }
 
 .search-input:focus {
@@ -187,12 +195,12 @@ html, body {
 
 .clear-btn {
   position: absolute;
-  right: 12px;
+  right: 10px;
   background: none;
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1;
 }
 .clear-btn:hover {
@@ -204,35 +212,56 @@ html, body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 2px 0;
+  padding: 1px 0;
 }
 
 .pmb-list::-webkit-scrollbar {
-  width: 4px;
+  width: 3px;
 }
 .pmb-list::-webkit-scrollbar-thumb {
   background: var(--border-color);
   border-radius: 2px;
 }
 
-/* 列表单项 */
+/* 列表单项 - 紧凑高密度 (22px) */
 .pmb-item {
   display: flex;
   align-items: center;
-  height: 27px;
-  padding: 0 8px 0 10px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0 6px 0 8px;
   cursor: pointer;
-  font-size: 12.5px;
+  font-size: 12px;
+  line-height: 22px;
   color: var(--text-primary);
   user-select: none;
-  transition: background-color 0.05s ease;
+  transition: background-color 0.04s ease;
 }
 
 .pmb-item:hover {
   background-color: var(--bg-hover);
 }
 
-/* PmB 标志性橙色激活高亮 */
+/* 拖拽交互高亮与插入线指示器 */
+.pmb-item.dragging, .node-row.dragging {
+  opacity: 0.4;
+  background-color: var(--bg-hover) !important;
+}
+
+.pmb-item.drag-over-top, .node-row.drag-over-top {
+  box-shadow: inset 0 2px 0 0 #1976d2 !important;
+}
+
+.pmb-item.drag-over-bottom, .node-row.drag-over-bottom {
+  box-shadow: inset 0 -2px 0 0 #1976d2 !important;
+}
+
+.pmb-item.drag-over-folder, .node-row.drag-over-folder {
+  background-color: #e8f0fe !important;
+  outline: 1px dashed #1976d2;
+}
+
+/* PmB 标志性激活高亮 */
 .pmb-item.active {
   background-color: var(--active-orange) !important;
   color: #ffffff !important;
@@ -246,19 +275,73 @@ html, body {
   color: #ffffff !important;
 }
 
-/* 通用图标样式 */
+.pmb-item.other-bookmarks-item .item-title {
+  color: var(--active-orange);
+  font-weight: 500;
+}
+
+.pmb-item.other-bookmarks-item.active .item-title {
+  color: #ffffff !important;
+}
+
+/* 分隔条书签项样式 */
+.pmb-item.is-separator {
+  height: 12px;
+  min-height: 12px;
+  cursor: grab;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+}
+.pmb-item.is-separator:hover {
+  background-color: var(--bg-hover);
+}
+.pmb-item.is-separator .separator-line {
+  width: 100%;
+  height: 1px;
+  background-color: var(--border-color);
+}
+
+/* 带文字的分类分隔条样式 (如 - - - - - codex - - - - -) */
+.pmb-item.is-section-separator {
+  height: 20px;
+  min-height: 20px;
+  cursor: grab;
+  padding: 0 6px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pmb-item.is-section-separator:hover {
+  background-color: var(--bg-hover);
+}
+.pmb-item.is-section-separator .section-line {
+  flex: 1;
+  height: 1px;
+  background-color: var(--border-color);
+}
+.pmb-item.is-section-separator .section-text {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  padding: 0 3px;
+  letter-spacing: 0.5px;
+}
+
+/* 通用图标样式 - 紧凑适配 */
 .item-icon {
-  width: 16px;
-  height: 16px;
-  margin-right: 7px;
+  width: 15px;
+  height: 15px;
+  margin-right: 5px;
   flex-shrink: 0;
   object-fit: contain;
 }
 
 .folder-svg {
-  width: 16px;
-  height: 16px;
-  margin-right: 7px;
+  width: 15px;
+  height: 15px;
+  margin-right: 5px;
   flex-shrink: 0;
   color: var(--folder-color);
 }
@@ -268,15 +351,16 @@ html, body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 12px;
 }
 
 .pmb-item .item-arrow {
-  margin-left: 4px;
+  margin-left: 2px;
   color: var(--text-muted);
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1;
 }
 
@@ -284,7 +368,7 @@ html, body {
 .search-item {
   display: flex;
   align-items: center;
-  padding: 5px 8px;
+  padding: 3px 6px;
   cursor: pointer;
   border-bottom: 1px solid var(--border-light);
 }
@@ -304,11 +388,11 @@ html, body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 12.5px;
+  font-size: 12px;
 }
 
 .search-item-url {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -332,20 +416,29 @@ html, body {
 .tree-list {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 6px 16px;
+  padding: 2px 4px 10px;
+}
+
+.tree-list::-webkit-scrollbar {
+  width: 3px;
+}
+.tree-list::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 2px;
 }
 
 .tree-node {
-  margin: 1px 0;
+  margin: 0;
 }
 
 .node-row {
   display: flex;
   align-items: center;
-  padding: 3px 6px;
-  border-radius: 4px;
+  padding: 1px 4px;
+  border-radius: 3px;
   cursor: pointer;
-  min-height: 26px;
+  min-height: 22px;
+  height: 22px;
 }
 
 .node-row:hover {
@@ -353,15 +446,15 @@ html, body {
 }
 
 .toggle-arrow {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  margin-right: 2px;
+  margin-right: 1px;
   flex-shrink: 0;
-  transition: transform 0.15s ease;
+  transition: transform 0.12s ease;
 }
 
 .toggle-arrow.expanded {
@@ -377,12 +470,12 @@ html, body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 12.5px;
+  font-size: 12px;
 }
 
 .children-container {
-  margin-left: 12px;
-  padding-left: 6px;
+  margin-left: 10px;
+  padding-left: 4px;
   border-left: 1px solid var(--border-light);
   display: none;
 }
@@ -397,15 +490,15 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 30px 10px;
+  padding: 20px 10px;
   color: var(--text-muted);
-  gap: 6px;
-  font-size: 12px;
+  gap: 4px;
+  font-size: 11.5px;
 }
 
 .spinner {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   border: 2px solid var(--border-color);
   border-top-color: var(--root-blue);
   border-radius: 50%;
@@ -416,61 +509,61 @@ html, body {
   to { transform: rotate(360deg); }
 }
 
-/* 右键菜单 */
+/* 右键菜单 - 紧凑原生纯文本菜单风格 */
 .context-menu {
   position: fixed;
   background-color: var(--bg-primary);
   border: 1px solid var(--border-color);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  padding: 4px;
-  min-width: 160px;
+  border-radius: 2px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18);
+  padding: 3px 0;
+  min-width: 136px;
   z-index: 99999;
 }
 
 .menu-item {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 5px 8px;
+  padding: 3px 14px;
   font-size: 12px;
-  border-radius: 4px;
   cursor: pointer;
+  color: var(--text-primary);
+  line-height: 18px;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.menu-item:hover:not(.disabled) {
+  background-color: var(--bg-hover);
   color: var(--text-primary);
 }
 
-.menu-item:hover {
-  background-color: #e8f0fe;
-  color: var(--root-blue);
-}
-
-.menu-item svg {
-  color: var(--text-secondary);
-  flex-shrink: 0;
-}
-
-.menu-item:hover svg {
-  color: var(--root-blue);
-}
-
-.menu-item.delete {
-  color: #ef4444;
-}
-.menu-item.delete svg {
-  color: #ef4444;
-}
-.menu-item.delete:hover {
-  background-color: #fee2e2;
-  color: #dc2626;
-}
-.menu-item.delete:hover svg {
-  color: #dc2626;
+.menu-item.disabled {
+  color: var(--text-muted) !important;
+  cursor: default !important;
+  background-color: transparent !important;
 }
 
 .menu-divider {
   height: 1px;
-  background: var(--border-color);
-  margin: 3px 2px;
+  background: var(--border-light);
+  margin: 3px 0;
+}
+
+/* 分隔条特殊书签展示 */
+.pmb-item.is-separator {
+  height: 10px;
+  min-height: 10px;
+  cursor: default;
+  padding: 0 8px;
+}
+.pmb-item.is-separator:hover {
+  background-color: transparent;
+}
+.pmb-item.is-separator .separator-line {
+  width: 100%;
+  height: 1px;
+  background-color: var(--border-color);
 }
 
 /* 模态对话框 */

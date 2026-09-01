@@ -140,23 +140,229 @@ function renderCascadeView() {
   }
 }
 
+function parseSeparatorInfo(title) {
+  if (!title) return null;
+  const trimmed = title.trim();
+  // 1. 纯横线 (如 ---, ──────────, ___)
+  if (/^[-─—_\s]{3,}$/.test(trimmed)) {
+    return { type: 'pure', text: '' };
+  }
+  // 2. 带文字的分类分隔条 (如 - - - - - codex - - - - -, --- 常用 ---)
+  const match = trimmed.match(/^[-─—_\s]{2,}(.+?)[-─—_\s]{2,}$/);
+  if (match && match[1].trim()) {
+    return { type: 'labeled', text: match[1].trim() };
+  }
+  return null;
+}
+
+function openEditForNode(node) {
+  if (!node) return;
+  const isFolder = typeof node.url === 'undefined';
+  if (!isFolder) {
+    showEditModal({
+      title: '修改书签',
+      initialTitle: node.title || '',
+      initialUrl: node.url || '',
+      showUrl: true,
+      onSave: async (newTitle, newUrl) => {
+        await chrome.bookmarks.update(node.id, {
+          title: newTitle,
+          url: newUrl || node.url || 'javascript:'
+        });
+        if (node.parentId) ensureFolderInCascadePath(node.parentId);
+        lastCreatedBookmarkId = node.id;
+        loadBookmarkTree();
+      }
+    });
+  } else {
+    const isRoot = node.id === '1' || (bookmarkBarNode && node.id === bookmarkBarNode.id);
+    if (isRoot) return;
+    showEditModal({
+      title: '修改文件夹',
+      initialTitle: node.title || '',
+      showUrl: false,
+      onSave: async (newTitle) => {
+        await chrome.bookmarks.update(node.id, { title: newTitle || node.title });
+        ensureFolderInCascadePath(node.parentId || node.id);
+        lastCreatedBookmarkId = node.id;
+        loadBookmarkTree();
+      }
+    });
+  }
+}
+
+function isSeparatorNode(item) {
+  if (!item || item.children) return false;
+  return Boolean(parseSeparatorInfo(item.title));
+}
+
+let draggedBookmarkId = null;
+
+function attachDragAndDropHandlers(itemEl, item, parentFolderNode) {
+  // 不允许拖动特殊根节点
+  if (item.id === '1' || item.id === '0') return;
+
+  itemEl.draggable = true;
+
+  itemEl.addEventListener('dragstart', (e) => {
+    draggedBookmarkId = item.id;
+    e.dataTransfer.setData('text/plain', item.id);
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => itemEl.classList.add('dragging'), 0);
+  });
+
+  itemEl.addEventListener('dragend', () => {
+    itemEl.classList.remove('dragging');
+    document.querySelectorAll('.drag-over-top, .drag-over-bottom, .drag-over-folder').forEach(el => {
+      el.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-folder');
+    });
+    draggedBookmarkId = null;
+  });
+
+  itemEl.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!draggedBookmarkId || draggedBookmarkId === item.id) return;
+
+    const rect = itemEl.getBoundingClientRect();
+    const offsetY = e.clientY - rect.top;
+    const height = rect.height;
+
+    itemEl.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-folder');
+
+    const isFolder = typeof item.url === 'undefined' && !isSeparatorNode(item);
+    if (isFolder && offsetY > height * 0.25 && offsetY < height * 0.75) {
+      // 拖到文件夹中间 -> 放入该文件夹
+      itemEl.classList.add('drag-over-folder');
+      e.dataTransfer.dropEffect = 'move';
+    } else if (offsetY < height / 2) {
+      // 上半部分 -> 插入在该项上方
+      itemEl.classList.add('drag-over-top');
+      e.dataTransfer.dropEffect = 'move';
+    } else {
+      // 下半部分 -> 插入在该项下方
+      itemEl.classList.add('drag-over-bottom');
+      e.dataTransfer.dropEffect = 'move';
+    }
+  });
+
+  itemEl.addEventListener('dragleave', () => {
+    itemEl.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-folder');
+  });
+
+  itemEl.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const sourceId = draggedBookmarkId || e.dataTransfer.getData('text/plain');
+    if (!sourceId || sourceId === item.id) return;
+
+    const isTop = itemEl.classList.contains('drag-over-top');
+    const isBottom = itemEl.classList.contains('drag-over-bottom');
+    const isIntoFolder = itemEl.classList.contains('drag-over-folder');
+
+    itemEl.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-folder');
+
+    try {
+      const sourceNode = await findBookmarkNode(sourceId);
+      const targetNode = await findBookmarkNode(item.id);
+      if (!sourceNode || !targetNode) return;
+
+      if (isIntoFolder) {
+        // 放入文件夹内部
+        await chrome.bookmarks.move(sourceId, { parentId: targetNode.id });
+        lastCreatedBookmarkId = sourceId;
+        ensureFolderInCascadePath(targetNode.id);
+        loadBookmarkTree();
+        return;
+      }
+
+      const targetParentId = targetNode.parentId || (parentFolderNode && parentFolderNode.id);
+      if (!targetParentId) return;
+
+      let targetIndex = targetNode.index;
+      if (isBottom) {
+        targetIndex = targetNode.index + 1;
+      }
+
+      await chrome.bookmarks.move(sourceId, { parentId: targetParentId, index: targetIndex });
+      lastCreatedBookmarkId = sourceId;
+      ensureFolderInCascadePath(targetParentId);
+      loadBookmarkTree();
+    } catch (err) {
+      console.error('拖拽移动书签失败:', err);
+    }
+  });
+}
+
 function populatePanelList(listEl, folderNode, depth) {
   listEl.innerHTML = '';
-  const children = folderNode.children || [];
+  let children = [...(folderNode.children || [])];
+
+  // 如果是根面板且存在其他书签(id='2')且有子项，置于列表顶部
+  if (depth === 0 && otherBookmarksNode && otherBookmarksNode.children && otherBookmarksNode.children.length > 0) {
+    if (!children.some(c => c.id === otherBookmarksNode.id)) {
+      children = [otherBookmarksNode, ...children];
+    }
+  }
+
   if (children.length === 0) {
     const emptyEl = document.createElement('div');
     emptyEl.className = 'empty-state';
     emptyEl.innerHTML = '<p>(空文件夹)</p>';
     listEl.appendChild(emptyEl);
-    return;
   }
 
   for (const item of children) {
-    const isFolder = !item.url;
+    const sepInfo = parseSeparatorInfo(item.title);
+    if (sepInfo) {
+      const sepEl = document.createElement('div');
+      sepEl.className = 'pmb-item ' + (sepInfo.type === 'pure' ? 'is-separator' : 'is-section-separator');
+      sepEl.dataset.id = item.id;
+      sepEl.title = `${item.title || '分割条'} (支持拖拽移动/双击或右键修改/删除)`;
+
+      if (sepInfo.type === 'pure') {
+        sepEl.innerHTML = '<div class="separator-line"></div>';
+      } else {
+        sepEl.innerHTML = `<div class="section-line"></div><span class="section-text">${escapeHtml(sepInfo.text)}</span><div class="section-line"></div>`;
+      }
+      
+      // 分割条作为书签也支持拖拽排序与右键操作
+      attachDragAndDropHandlers(sepEl, item, folderNode);
+
+      sepEl.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+
+      // 双击直接编辑分割条
+      sepEl.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openEditForNode(item);
+      });
+
+      listEl.appendChild(sepEl);
+      continue;
+    }
+
+    const isFolder = typeof item.url === 'undefined';
     const itemEl = document.createElement('div');
     itemEl.className = 'pmb-item';
+    if (item.id === '2') {
+      itemEl.classList.add('other-bookmarks-item');
+    }
     itemEl.dataset.id = item.id;
     itemEl.title = item.title || (item.url ? item.url : '未命名');
+
+    // 绑定拖拽移动事件
+    attachDragAndDropHandlers(itemEl, item, folderNode);
+
+    // 双击快速编辑
+    itemEl.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openEditForNode(item);
+    });
 
     if (isFolder) {
       // 文件夹项
@@ -242,6 +448,28 @@ function populatePanelList(listEl, folderNode, depth) {
 
     listEl.appendChild(itemEl);
   }
+
+  // 容器空白区域允许接收拖拽放入
+  listEl.addEventListener('dragover', (e) => {
+    if (!draggedBookmarkId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  });
+
+  listEl.addEventListener('drop', async (e) => {
+    if (e.target !== listEl && !e.target.classList.contains('empty-state')) return;
+    const sourceId = draggedBookmarkId || e.dataTransfer.getData('text/plain');
+    if (!sourceId || sourceId === folderNode.id) return;
+    e.preventDefault();
+    try {
+      await chrome.bookmarks.move(sourceId, { parentId: folderNode.id });
+      lastCreatedBookmarkId = sourceId;
+      ensureFolderInCascadePath(folderNode.id);
+      loadBookmarkTree();
+    } catch (err) {
+      console.error('拖入列表末尾失败:', err);
+    }
+  });
 }
 
 function appendCascadePanel(folderNode, depth) {
@@ -298,6 +526,22 @@ function appendCascadePanel(folderNode, depth) {
     toolsEl.appendChild(mgrBtn);
 
     headerEl.appendChild(toolsEl);
+  } else {
+    // 子面板添加关闭按钮
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'h-btn h-btn-close';
+    closeBtn.title = '关闭此面板';
+    closeBtn.textContent = '✕';
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      panelEl.remove();
+      openCascadeFolderIds = openCascadeFolderIds.slice(0, depth - 1);
+      const parentPanel = panelsContainer.querySelector(`.pmb-panel[data-depth="${depth - 1}"]`);
+      if (parentPanel) {
+        parentPanel.querySelectorAll('.pmb-item.active').forEach(el => el.classList.remove('active'));
+      }
+    });
+    headerEl.appendChild(closeBtn);
   }
 
   panelEl.appendChild(headerEl);
@@ -311,7 +555,7 @@ function appendCascadePanel(folderNode, depth) {
     searchInput.type = 'text';
     searchInput.id = 'cascade-search-input';
     searchInput.className = 'search-input';
-    searchInput.placeholder = '快速搜索书签...';
+    searchInput.placeholder = '搜索';
     searchInput.autocomplete = 'off';
 
     const clearBtn = document.createElement('button');
@@ -449,9 +693,24 @@ function createTreeNode(node, depth = 0) {
   nodeEl.className = 'tree-node';
   nodeEl.dataset.id = node.id || '';
 
+  if (isSeparatorNode(node)) {
+    const sepRow = document.createElement('div');
+    sepRow.className = 'node-row is-separator';
+    sepRow.dataset.id = node.id;
+    sepRow.title = '分割条 (支持拖拽移动/右键修改/删除)';
+    sepRow.innerHTML = '<div class="separator-line" style="width:100%;height:1px;background:var(--border-color);margin:4px 0;"></div>';
+    attachDragAndDropHandlers(sepRow, node, null);
+    nodeEl.appendChild(sepRow);
+    return nodeEl;
+  }
+
   const rowEl = document.createElement('div');
   rowEl.className = 'node-row';
+  rowEl.dataset.id = node.id;
   rowEl.title = node.title || (node.url ? node.url : '未命名');
+
+  // 绑定拖拽移动
+  attachDragAndDropHandlers(rowEl, node, null);
 
   if (isFolder) {
     const isExpanded = expandedFolders.has(node.id);
@@ -724,8 +983,55 @@ function extractUrls(node, urls = []) {
 }
 
 // ----------------------------------------------------
-// 4. 右键菜单 (全局事件委托，确保所有层级子面板 100% 触发)
+// 4. 剪贴板与右键菜单动作
 // ----------------------------------------------------
+let bookmarkClipboard = null; // { action: 'cut'|'copy', id: string, node: object }
+
+async function duplicateBookmarkNode(sourceNode, targetParentId, targetIndex) {
+  if (sourceNode.url) {
+    const created = await chrome.bookmarks.create({
+      parentId: targetParentId,
+      index: targetIndex,
+      title: sourceNode.title,
+      url: sourceNode.url
+    });
+    lastCreatedBookmarkId = created.id;
+    return created;
+  } else {
+    const createdFolder = await chrome.bookmarks.create({
+      parentId: targetParentId,
+      index: targetIndex,
+      title: sourceNode.title || '新建文件夹'
+    });
+    lastCreatedBookmarkId = createdFolder.id;
+    if (sourceNode.children && sourceNode.children.length > 0) {
+      for (const child of sourceNode.children) {
+        await duplicateBookmarkNode(child, createdFolder.id);
+      }
+    }
+    return createdFolder;
+  }
+}
+
+async function sortBookmarksByName(folderId) {
+  try {
+    const children = await chrome.bookmarks.getChildren(folderId);
+    if (!children || children.length <= 1) return;
+
+    const sorted = [...children].sort((a, b) => {
+      return (a.title || '').localeCompare(b.title || '', 'zh-CN', { numeric: true, sensitivity: 'base' });
+    });
+
+    for (let i = 0; i < sorted.length; i++) {
+      await chrome.bookmarks.move(sorted[i].id, { parentId: folderId, index: i });
+    }
+    ensureFolderInCascadePath(folderId);
+    loadBookmarkTree();
+  } catch (err) {
+    console.error('排序失败:', err);
+  }
+}
+
 const bookmarkMenu = document.getElementById('bookmark-context-menu');
 const folderMenu = document.getElementById('folder-context-menu');
 
@@ -747,18 +1053,21 @@ function showContextMenu(x, y, node, type) {
   const menu = type === 'folder' ? folderMenu : bookmarkMenu;
   if (!menu) return;
 
-  if (type === 'folder') {
-    const isRoot = node.id === '1' || (bookmarkBarNode && node.id === bookmarkBarNode.id);
-    const renameItem = folderMenu.querySelector('[data-action="rename-folder"]');
-    const deleteItem = folderMenu.querySelector('[data-action="delete-folder"]');
-    if (renameItem) renameItem.style.display = isRoot ? 'none' : 'flex';
-    if (deleteItem) deleteItem.style.display = isRoot ? 'none' : 'flex';
+  const isRoot = node.id === '1' || (bookmarkBarNode && node.id === bookmarkBarNode.id);
+  const editItem = menu.querySelector('[data-action="edit"]');
+  const deleteItem = menu.querySelector('[data-action="delete"]');
+  if (editItem) editItem.style.display = (type === 'folder' && isRoot) ? 'none' : 'flex';
+  if (deleteItem) deleteItem.style.display = (type === 'folder' && isRoot) ? 'none' : 'flex';
+
+  const pasteBtn = menu.querySelector('[data-action="paste"]');
+  if (pasteBtn) {
+    pasteBtn.classList.toggle('disabled', !bookmarkClipboard);
   }
 
   menu.classList.remove('hidden');
 
-  const menuWidth = menu.offsetWidth || 175;
-  const menuHeight = menu.offsetHeight || (type === 'folder' ? 190 : 250);
+  const menuWidth = menu.offsetWidth || 140;
+  const menuHeight = menu.offsetHeight || 300;
 
   const winWidth = window.innerWidth || document.documentElement.clientWidth || 500;
   const winHeight = window.innerHeight || document.documentElement.clientHeight || 520;
@@ -766,11 +1075,11 @@ function showContextMenu(x, y, node, type) {
   let posX = x;
   let posY = y;
 
-  if (posX + menuWidth > winWidth - 6) {
-    posX = Math.max(6, winWidth - menuWidth - 6);
+  if (posX + menuWidth > winWidth - 4) {
+    posX = Math.max(4, winWidth - menuWidth - 4);
   }
-  if (posY + menuHeight > winHeight - 6) {
-    posY = Math.max(6, winHeight - menuHeight - 6);
+  if (posY + menuHeight > winHeight - 4) {
+    posY = Math.max(4, winHeight - menuHeight - 4);
   }
 
   menu.style.left = posX + 'px';
@@ -793,7 +1102,7 @@ document.addEventListener('contextmenu', async (e) => {
     if (id) {
       const node = await findBookmarkNode(id);
       if (node) {
-        const isFolder = !node.url;
+        const isFolder = typeof node.url === 'undefined';
         showContextMenu(e.clientX, e.clientY, node, isFolder ? 'folder' : 'bookmark');
         return;
       }
@@ -842,103 +1151,188 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ----------------------------------------------------
-// 右键菜单动作响应
+// 右键菜单统一动作响应
 // ----------------------------------------------------
-bookmarkMenu.addEventListener('click', async (e) => {
+async function handleContextMenuClick(e, isFolderMenu) {
   const item = e.target.closest('.menu-item');
-  if (!item || !activeContextMenuTarget) return;
+  if (!item || item.classList.contains('disabled') || !activeContextMenuTarget) return;
 
   const action = item.dataset.action;
   const target = activeContextMenuTarget;
   hideContextMenu();
 
-  if (action === 'open-current') {
-    chrome.tabs.update({ url: target.url });
-    window.close();
-  } else if (action === 'open-new-tab') {
-    chrome.tabs.create({ url: target.url, active: true });
-    window.close();
-  } else if (action === 'open-bg-tab') {
-    chrome.tabs.create({ url: target.url, active: false });
-  } else if (action === 'open-incognito') {
-    chrome.windows.create({ url: target.url, incognito: true });
-    window.close();
-  } else if (action === 'copy-url') {
-    navigator.clipboard.writeText(target.url);
-  } else if (action === 'edit-bookmark') {
-    showEditModal({
-      title: '编辑书签',
-      initialTitle: target.title || '',
-      initialUrl: target.url || '',
-      showUrl: true,
-      onSave: async (newTitle, newUrl) => {
-        await chrome.bookmarks.update(target.id, { title: newTitle, url: newUrl });
+  let allUrls = [];
+  if (isFolderMenu || typeof target.url === 'undefined') {
+    try {
+      const fullSubTree = (await chrome.bookmarks.getSubTree(target.id))[0];
+      allUrls = extractUrls(fullSubTree);
+    } catch (err) {}
+  }
+
+  switch (action) {
+    case 'open-bg-tab':
+      if (target.url) {
+        chrome.tabs.create({ url: target.url, active: false });
+      }
+      break;
+
+    case 'open-all-bg':
+      for (const u of allUrls) {
+        chrome.tabs.create({ url: u, active: false });
+      }
+      break;
+
+    case 'open-new-window':
+      if (target.url) {
+        chrome.windows.create({ url: target.url });
+        window.close();
+      }
+      break;
+
+    case 'open-all-window':
+      if (allUrls.length > 0) {
+        chrome.windows.create({ url: allUrls });
+        window.close();
+      }
+      break;
+
+    case 'open-incognito':
+      if (target.url) {
+        chrome.windows.create({ url: target.url, incognito: true });
+        window.close();
+      }
+      break;
+
+    case 'open-all-incognito':
+      if (allUrls.length > 0) {
+        chrome.windows.create({ url: allUrls, incognito: true });
+        window.close();
+      }
+      break;
+
+    case 'edit':
+      openEditForNode(target);
+      break;
+
+    case 'delete':
+      if (target.url) {
+        await chrome.bookmarks.remove(target.id);
         if (target.parentId) ensureFolderInCascadePath(target.parentId);
-        lastCreatedBookmarkId = target.id;
+        loadBookmarkTree();
+      } else {
+        await chrome.bookmarks.removeTree(target.id);
+        if (target.parentId) ensureFolderInCascadePath(target.parentId);
         loadBookmarkTree();
       }
-    });
-  } else if (action === 'delete-bookmark') {
-    await chrome.bookmarks.remove(target.id);
-    if (target.parentId) ensureFolderInCascadePath(target.parentId);
-    loadBookmarkTree();
-  }
-});
+      break;
 
-folderMenu.addEventListener('click', async (e) => {
-  const item = e.target.closest('.menu-item');
-  if (!item || !activeContextMenuTarget) return;
+    case 'cut':
+      bookmarkClipboard = { action: 'cut', id: target.id, isFolder: !target.url };
+      break;
 
-  const action = item.dataset.action;
-  const target = activeContextMenuTarget;
-  hideContextMenu();
+    case 'copy':
+      try {
+        const fullNode = (await chrome.bookmarks.getSubTree(target.id))[0];
+        bookmarkClipboard = { action: 'copy', node: fullNode, isFolder: !target.url };
+      } catch (err) {
+        bookmarkClipboard = { action: 'copy', node: target, isFolder: !target.url };
+      }
+      break;
 
-  const fullSubTree = (await chrome.bookmarks.getSubTree(target.id))[0];
-  const allUrls = extractUrls(fullSubTree);
+    case 'paste':
+      if (!bookmarkClipboard) return;
+      {
+        const isTargetFolder = !target.url;
+        const destParentId = isTargetFolder ? target.id : (target.parentId || (bookmarkBarNode && bookmarkBarNode.id));
+        const destIndex = isTargetFolder ? undefined : (typeof target.index === 'number' ? target.index + 1 : undefined);
 
-  if (action === 'open-all-tabs') {
-    for (const u of allUrls) {
-      chrome.tabs.create({ url: u, active: false });
-    }
-  } else if (action === 'open-all-window') {
-    if (allUrls.length > 0) {
-      chrome.windows.create({ url: allUrls });
-      window.close();
-    }
-  } else if (action === 'new-folder') {
-    showEditModal({
-      title: '新建子文件夹',
-      initialTitle: '',
-      showUrl: false,
-      onSave: async (newTitle) => {
-        const created = await chrome.bookmarks.create({ parentId: target.id, title: newTitle || '新建文件夹' });
-        if (created) {
-          lastCreatedBookmarkId = created.id;
-          ensureFolderInCascadePath(target.id);
+        if (bookmarkClipboard.action === 'cut') {
+          await chrome.bookmarks.move(bookmarkClipboard.id, { parentId: destParentId, index: destIndex });
+          lastCreatedBookmarkId = bookmarkClipboard.id;
+          bookmarkClipboard = null;
+        } else if (bookmarkClipboard.action === 'copy' && bookmarkClipboard.node) {
+          await duplicateBookmarkNode(bookmarkClipboard.node, destParentId, destIndex);
         }
+        ensureFolderInCascadePath(destParentId);
         loadBookmarkTree();
       }
-    });
-  } else if (action === 'rename-folder') {
-    showEditModal({
-      title: '重命名文件夹',
-      initialTitle: target.title || '',
-      showUrl: false,
-      onSave: async (newTitle) => {
-        await chrome.bookmarks.update(target.id, { title: newTitle || target.title });
-        ensureFolderInCascadePath(target.parentId || target.id);
-        lastCreatedBookmarkId = target.id;
+      break;
+
+    case 'add-current-page':
+      try {
+        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (activeTab) {
+          const isTargetFolder = !target.url;
+          const parentId = isTargetFolder ? target.id : (target.parentId || (bookmarkBarNode && bookmarkBarNode.id));
+          const index = isTargetFolder ? undefined : (typeof target.index === 'number' ? target.index + 1 : undefined);
+          const created = await chrome.bookmarks.create({
+            parentId,
+            index,
+            title: activeTab.title || activeTab.url || '新书签',
+            url: activeTab.url
+          });
+          lastCreatedBookmarkId = created.id;
+          ensureFolderInCascadePath(parentId);
+          loadBookmarkTree();
+        }
+      } catch (err) {
+        console.error('添加当前网页失败:', err);
+      }
+      break;
+
+    case 'add-folder':
+      {
+        const isTargetFolder = !target.url;
+        const parentId = isTargetFolder ? target.id : (target.parentId || (bookmarkBarNode && bookmarkBarNode.id));
+        showEditModal({
+          title: '添加文件夹',
+          initialTitle: '',
+          showUrl: false,
+          onSave: async (newTitle) => {
+            const created = await chrome.bookmarks.create({
+              parentId,
+              title: newTitle || '新建文件夹'
+            });
+            if (created) {
+              lastCreatedBookmarkId = created.id;
+              ensureFolderInCascadePath(parentId);
+            }
+            loadBookmarkTree();
+          }
+        });
+      }
+      break;
+
+    case 'add-separator':
+      {
+        const isTargetFolder = !target.url;
+        const parentId = isTargetFolder ? target.id : (target.parentId || (bookmarkBarNode && bookmarkBarNode.id));
+        const index = isTargetFolder ? undefined : (typeof target.index === 'number' ? target.index + 1 : undefined);
+        const sep = await chrome.bookmarks.create({
+          parentId,
+          index,
+          title: '──────────',
+          url: 'javascript:'
+        });
+        lastCreatedBookmarkId = sep.id;
+        ensureFolderInCascadePath(parentId);
         loadBookmarkTree();
       }
-    });
-  } else if (action === 'delete-folder') {
-    if (confirm('确定要删除文件夹 "' + (target.title || '未命名') + '" 及其内部所有书签吗？')) {
-      await chrome.bookmarks.removeTree(target.id);
-      if (target.parentId) ensureFolderInCascadePath(target.parentId);
-      loadBookmarkTree();
-    }
+      break;
+
+    case 'sort-by-name':
+      {
+        const folderId = !target.url ? target.id : (target.parentId || (bookmarkBarNode && bookmarkBarNode.id));
+        if (folderId) {
+          await sortBookmarksByName(folderId);
+        }
+      }
+      break;
   }
-});
+}
+
+bookmarkMenu.addEventListener('click', (e) => handleContextMenuClick(e, false));
+folderMenu.addEventListener('click', (e) => handleContextMenuClick(e, true));
 
 // ----------------------------------------------------
 // 5. 编辑对话框
@@ -1011,6 +1405,10 @@ async function loadBookmarkTree() {
 
     bookmarkBarNode = Array.isArray(rootNodes)
       ? (rootNodes.find(n => n.id === '1') || rootNodes[0])
+      : null;
+
+    otherBookmarksNode = Array.isArray(rootNodes)
+      ? rootNodes.find(n => n.id === '2')
       : null;
 
     applyViewMode(currentViewMode);

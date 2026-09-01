@@ -32,18 +32,145 @@ function saveExpandedState() {
   }
 }
 
+function parseSeparatorInfo(title) {
+  if (!title) return null;
+  const trimmed = title.trim();
+  if (/^[-─—_\s]{3,}$/.test(trimmed)) {
+    return { type: 'pure', text: '' };
+  }
+  const match = trimmed.match(/^[-─—_\s]{2,}(.+?)[-─—_\s]{2,}$/);
+  if (match && match[1].trim()) {
+    return { type: 'labeled', text: match[1].trim() };
+  }
+  return null;
+}
+
+function isSeparatorNode(item) {
+  if (!item || item.children) return false;
+  return Boolean(parseSeparatorInfo(item.title));
+}
+
+let draggedBookmarkId = null;
+
+function attachDragAndDropHandlers(itemEl, item) {
+  if (item.id === '1' || item.id === '0') return;
+
+  itemEl.draggable = true;
+
+  itemEl.addEventListener('dragstart', (e) => {
+    draggedBookmarkId = item.id;
+    e.dataTransfer.setData('text/plain', item.id);
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => itemEl.classList.add('dragging'), 0);
+  });
+
+  itemEl.addEventListener('dragend', () => {
+    itemEl.classList.remove('dragging');
+    document.querySelectorAll('.drag-over-top, .drag-over-bottom, .drag-over-folder').forEach(el => {
+      el.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-folder');
+    });
+    draggedBookmarkId = null;
+  });
+
+  itemEl.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!draggedBookmarkId || draggedBookmarkId === item.id) return;
+
+    const rect = itemEl.getBoundingClientRect();
+    const offsetY = e.clientY - rect.top;
+    const height = rect.height;
+
+    itemEl.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-folder');
+
+    const isFolder = typeof item.url === 'undefined' && !isSeparatorNode(item);
+    if (isFolder && offsetY > height * 0.25 && offsetY < height * 0.75) {
+      itemEl.classList.add('drag-over-folder');
+      e.dataTransfer.dropEffect = 'move';
+    } else if (offsetY < height / 2) {
+      itemEl.classList.add('drag-over-top');
+      e.dataTransfer.dropEffect = 'move';
+    } else {
+      itemEl.classList.add('drag-over-bottom');
+      e.dataTransfer.dropEffect = 'move';
+    }
+  });
+
+  itemEl.addEventListener('dragleave', () => {
+    itemEl.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-folder');
+  });
+
+  itemEl.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const sourceId = draggedBookmarkId || e.dataTransfer.getData('text/plain');
+    if (!sourceId || sourceId === item.id) return;
+
+    const isBottom = itemEl.classList.contains('drag-over-bottom');
+    const isIntoFolder = itemEl.classList.contains('drag-over-folder');
+
+    itemEl.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-folder');
+
+    try {
+      const sourceNode = (await chrome.bookmarks.get(sourceId))[0];
+      const targetNode = (await chrome.bookmarks.get(item.id))[0];
+      if (!sourceNode || !targetNode) return;
+
+      if (isIntoFolder) {
+        await chrome.bookmarks.move(sourceId, { parentId: targetNode.id });
+        loadBookmarkTree();
+        return;
+      }
+
+      const targetParentId = targetNode.parentId;
+      let targetIndex = targetNode.index;
+      if (isBottom) {
+        targetIndex = targetNode.index + 1;
+      }
+
+      await chrome.bookmarks.move(sourceId, { parentId: targetParentId, index: targetIndex });
+      loadBookmarkTree();
+    } catch (err) {
+      console.error('拖拽移动失败:', err);
+    }
+  });
+}
+
 // 递归构建单个节点 DOM (绝对防崩设计)
 function createNodeElement(node, depth = 0) {
   if (!node) return null;
 
-  const isFolder = !node.url && Array.isArray(node.children);
+  const isFolder = typeof node.url === 'undefined' && Array.isArray(node.children);
   const nodeEl = document.createElement('div');
   nodeEl.className = 'tree-node';
   nodeEl.dataset.id = node.id || '';
 
+  const sepInfo = parseSeparatorInfo(node.title);
+  if (sepInfo) {
+    const sepRow = document.createElement('div');
+    sepRow.className = 'node-row ' + (sepInfo.type === 'pure' ? 'is-separator' : 'is-section-separator');
+    sepRow.dataset.id = node.id;
+    sepRow.title = `${node.title || '分割条'} (支持拖拽/右键修改/删除)`;
+    
+    if (sepInfo.type === 'pure') {
+      sepRow.innerHTML = '<div class="separator-line" style="width:100%;height:1px;background:var(--border-color);margin:4px 0;"></div>';
+    } else {
+      sepRow.innerHTML = `<div class="section-line"></div><span class="section-text">${escapeHtml(sepInfo.text)}</span><div class="section-line"></div>`;
+    }
+
+    attachDragAndDropHandlers(sepRow, node);
+    sepRow.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showContextMenu(e.clientX, e.clientY, node);
+    });
+    nodeEl.appendChild(sepRow);
+    return nodeEl;
+  }
+
   const rowEl = document.createElement('div');
   rowEl.className = 'node-row';
   rowEl.title = node.title || (node.url ? node.url : '未命名');
+  attachDragAndDropHandlers(rowEl, node);
 
   if (isFolder) {
     const isExpanded = expandedFolders.has(node.id);
