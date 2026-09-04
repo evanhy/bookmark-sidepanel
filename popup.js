@@ -68,6 +68,204 @@ let lastCreatedBookmarkId = null; // 记录最新创建的项ID以高亮提示
 // 正在搜索状态标志
 let isSearching = false;
 
+// 统一书签打开逻辑
+function openBookmarkUrl(url, isBackground = false) {
+  if (!url) return;
+  if (isBackground) {
+    chrome.tabs.create({ url, active: false });
+    return;
+  }
+  if (userSettings.openTarget === 'new-bg') {
+    chrome.tabs.create({ url, active: false });
+  } else if (userSettings.openTarget === 'new-active') {
+    chrome.tabs.create({ url, active: true });
+    window.close();
+  } else {
+    chrome.tabs.update({ url });
+    window.close();
+  }
+}
+
+// ----------------------------------------------------
+// 全键盘极速导航管理器 (Keyboard Navigator)
+// ----------------------------------------------------
+let keyboardFocusedEl = null;
+
+function setKeyboardFocus(el, scroll = true) {
+  if (keyboardFocusedEl && keyboardFocusedEl !== el) {
+    keyboardFocusedEl.classList.remove('keyboard-focused');
+  }
+  keyboardFocusedEl = el;
+  if (keyboardFocusedEl) {
+    keyboardFocusedEl.classList.add('keyboard-focused');
+    if (scroll) {
+      keyboardFocusedEl.scrollIntoView({ block: 'nearest' });
+    }
+  }
+}
+
+function clearKeyboardFocus() {
+  if (keyboardFocusedEl) {
+    keyboardFocusedEl.classList.remove('keyboard-focused');
+    keyboardFocusedEl = null;
+  }
+}
+
+function getActiveNavigationItems() {
+  if (currentViewMode === 'tree') {
+    const treeInput = document.getElementById('tree-search-input');
+    if (treeInput && treeInput.value.trim()) {
+      return Array.from(treeList.querySelectorAll('.search-item'));
+    }
+    return Array.from(treeList.querySelectorAll('.node-row')).filter(el => el.offsetParent !== null);
+  }
+
+  // 级联模式
+  if (isSearching) {
+    const rootList = document.getElementById('root-panel-list');
+    return rootList ? Array.from(rootList.querySelectorAll('.search-item')) : [];
+  }
+
+  // 级联常态：优先当前 focusedEl 所在面板，否则取最右侧面板
+  let targetPanel = null;
+  if (keyboardFocusedEl && keyboardFocusedEl.closest('.pmb-panel')) {
+    targetPanel = keyboardFocusedEl.closest('.pmb-panel');
+  } else {
+    const panels = Array.from(panelsContainer.querySelectorAll('.pmb-panel'));
+    if (panels.length > 0) {
+      targetPanel = panels[panels.length - 1];
+    }
+  }
+
+  if (!targetPanel) return [];
+  return Array.from(targetPanel.querySelectorAll('.pmb-item:not(.is-separator):not(.is-section-separator)'));
+}
+
+function triggerItemAction(el, isCtrlOrCmd = false) {
+  if (!el) return;
+
+  // 1. 搜索项
+  if (el.classList.contains('search-item')) {
+    const url = el.title || el.querySelector('.search-item-url')?.textContent;
+    if (url) {
+      openBookmarkUrl(url, isCtrlOrCmd);
+    }
+    return;
+  }
+
+  // 2. 级联模式项
+  if (el.classList.contains('pmb-item')) {
+    const isFolder = Boolean(el.querySelector('.folder-svg') || el.querySelector('.item-arrow'));
+    if (isFolder) {
+      const currentPanel = el.closest('.pmb-panel');
+      const depth = parseInt(currentPanel?.dataset?.depth || '0', 10);
+      el.click();
+      setTimeout(() => {
+        const nextPanel = panelsContainer.querySelector(`.pmb-panel[data-depth="${depth + 1}"]`);
+        if (nextPanel) {
+          const firstItem = nextPanel.querySelector('.pmb-item:not(.is-separator):not(.is-section-separator)');
+          if (firstItem) {
+            setKeyboardFocus(firstItem);
+          }
+        }
+      }, 60);
+    } else {
+      if (isCtrlOrCmd) {
+        const fakeEvent = new MouseEvent('click', { ctrlKey: true, bubbles: true, cancelable: true });
+        el.dispatchEvent(fakeEvent);
+      } else {
+        el.click();
+      }
+    }
+    return;
+  }
+
+  // 3. 树状模式节点行
+  if (el.classList.contains('node-row')) {
+    const isFolder = Boolean(el.querySelector('.toggle-arrow'));
+    if (isFolder) {
+      el.click();
+    } else {
+      if (isCtrlOrCmd) {
+        const fakeEvent = new MouseEvent('click', { ctrlKey: true, bubbles: true, cancelable: true });
+        el.dispatchEvent(fakeEvent);
+      } else {
+        el.click();
+      }
+    }
+  }
+}
+
+function handleNavigateLeft() {
+  if (currentViewMode === 'tree') {
+    if (!keyboardFocusedEl) return;
+    const nodeEl = keyboardFocusedEl.closest('.tree-node');
+    const childrenContainer = nodeEl?.querySelector('.node-children');
+    const arrow = keyboardFocusedEl.querySelector('.toggle-arrow');
+    if (childrenContainer && !childrenContainer.classList.contains('hidden')) {
+      arrow?.click();
+    } else {
+      const parentNode = nodeEl?.parentElement?.closest('.tree-node');
+      const parentRow = parentNode?.querySelector(':scope > .node-row');
+      if (parentRow) {
+        setKeyboardFocus(parentRow);
+      }
+    }
+    return;
+  }
+
+  // 级联模式 (从右往左弹出，箭头为 ‹):
+  // 按 ← (向左键): 顺着箭头方向展开文件夹，进入左侧子面板！
+  if (!keyboardFocusedEl) return;
+  const isFolder = Boolean(keyboardFocusedEl.querySelector('.folder-svg') || keyboardFocusedEl.querySelector('.item-arrow'));
+  if (isFolder) {
+    triggerItemAction(keyboardFocusedEl);
+  }
+}
+
+function handleNavigateRight() {
+  if (currentViewMode === 'tree') {
+    if (!keyboardFocusedEl) return;
+    const nodeEl = keyboardFocusedEl.closest('.tree-node');
+    const childrenContainer = nodeEl?.querySelector('.node-children');
+    const arrow = keyboardFocusedEl.querySelector('.toggle-arrow');
+    if (childrenContainer && childrenContainer.classList.contains('hidden')) {
+      arrow?.click();
+    }
+    return;
+  }
+
+  // 级联模式 (从右往左弹出):
+  // 按 → (向右键): 关闭当前子面板，退回右侧父级面板！
+  if (!keyboardFocusedEl) return;
+  const currentPanel = keyboardFocusedEl.closest('.pmb-panel');
+  if (!currentPanel) return;
+  const depth = parseInt(currentPanel.dataset.depth || '0', 10);
+
+  if (depth > 0) {
+    const closeBtn = currentPanel.querySelector('.h-btn-close');
+    if (closeBtn) {
+      closeBtn.click();
+    } else {
+      currentPanel.remove();
+    }
+    const parentPanel = panelsContainer.querySelector(`.pmb-panel[data-depth="${depth - 1}"]`);
+    if (parentPanel) {
+      const activeItem = parentPanel.querySelector('.pmb-item.active') || parentPanel.querySelector('.pmb-item');
+      if (activeItem) {
+        setKeyboardFocus(activeItem);
+      }
+    }
+  } else {
+    // 根面板按向右键，回到搜索输入框
+    const searchInput = document.getElementById('cascade-search-input');
+    if (searchInput) {
+      clearKeyboardFocus();
+      searchInput.focus();
+    }
+  }
+}
+
 function getFaviconUrl(pageUrl) {
   try {
     const url = new URL(chrome.runtime.getURL('/_favicon/'));
@@ -433,6 +631,7 @@ function populatePanelList(listEl, folderNode, depth) {
 
       // 悬停逻辑 (按配置延时)
       itemEl.addEventListener('mouseenter', () => {
+        setKeyboardFocus(itemEl, false);
         if (isSearching) return;
         clearTimeout(hoverCloseTimer);
         clearTimeout(hoverOpenTimer);
@@ -447,6 +646,7 @@ function populatePanelList(listEl, folderNode, depth) {
 
       itemEl.addEventListener('click', (e) => {
         e.stopPropagation();
+        setKeyboardFocus(itemEl, false);
         listEl.querySelectorAll('.pmb-item').forEach(el => el.classList.remove('active'));
         itemEl.classList.add('active');
         appendCascadePanel(item, depth + 1);
@@ -466,6 +666,7 @@ function populatePanelList(listEl, folderNode, depth) {
       itemEl.appendChild(nameEl);
 
       itemEl.addEventListener('mouseenter', () => {
+        setKeyboardFocus(itemEl, false);
         if (isSearching) return;
         clearTimeout(hoverOpenTimer);
         clearTimeout(hoverCloseTimer);
@@ -484,25 +685,13 @@ function populatePanelList(listEl, folderNode, depth) {
       // 按照用户设置打开目标
       itemEl.addEventListener('click', (e) => {
         e.preventDefault();
-        if (e.ctrlKey || e.metaKey) {
-          chrome.tabs.create({ url: item.url, active: false });
-          return;
-        }
-        if (userSettings.openTarget === 'new-bg') {
-          chrome.tabs.create({ url: item.url, active: false });
-        } else if (userSettings.openTarget === 'new-active') {
-          chrome.tabs.create({ url: item.url, active: true });
-          window.close();
-        } else {
-          chrome.tabs.update({ url: item.url });
-          window.close();
-        }
+        openBookmarkUrl(item.url, e.ctrlKey || e.metaKey);
       });
 
       itemEl.addEventListener('auxclick', (e) => {
         if (e.button === 1) {
           e.preventDefault();
-          chrome.tabs.create({ url: item.url, active: false });
+          openBookmarkUrl(item.url, true);
         }
       });
     }
@@ -673,12 +862,14 @@ async function handleCascadeSearch(query) {
   const trimmed = (query || '').trim();
   if (!trimmed) {
     isSearching = false;
+    clearKeyboardFocus();
     // 恢复根面板书签树
     populatePanelList(rootList, bookmarkBarNode, 0);
     return;
   }
 
   isSearching = true;
+  clearKeyboardFocus();
   // 关闭所有已打开的子面板
   const panels = panelsContainer.querySelectorAll('.pmb-panel');
   panels.forEach(p => {
@@ -724,20 +915,21 @@ async function handleCascadeSearch(query) {
 
       itemEl.appendChild(infoEl);
 
+      itemEl.addEventListener('mouseenter', () => {
+        setKeyboardFocus(itemEl, false);
+      });
+
       itemEl.addEventListener('click', (e) => {
-        if (e.ctrlKey || e.metaKey) {
-          chrome.tabs.create({ url: item.url, active: false });
-        } else {
-          chrome.tabs.update({ url: item.url });
-          window.close();
-        }
+        e.preventDefault();
+        openBookmarkUrl(item.url, e.ctrlKey || e.metaKey);
       });
 
       itemEl.addEventListener('auxclick', (e) => {
-        if (e.button === 1) chrome.tabs.create({ url: item.url, active: false });
+        if (e.button === 1) {
+          e.preventDefault();
+          openBookmarkUrl(item.url, true);
+        }
       });
-
-      
 
       fragment.appendChild(itemEl);
     }
@@ -853,24 +1045,22 @@ function createTreeNode(node, depth = 0) {
 
     nodeEl.appendChild(rowEl);
 
+    rowEl.addEventListener('mouseenter', () => {
+      setKeyboardFocus(rowEl, false);
+    });
+
     rowEl.addEventListener('click', (e) => {
       e.preventDefault();
-      if (e.ctrlKey || e.metaKey) {
-        chrome.tabs.create({ url: node.url, active: false });
-      } else {
-        chrome.tabs.update({ url: node.url });
-        window.close();
-      }
+      openBookmarkUrl(node.url, e.ctrlKey || e.metaKey);
     });
 
     rowEl.addEventListener('auxclick', (e) => {
       if (e.button === 1) {
         e.preventDefault();
-        chrome.tabs.create({ url: node.url, active: false });
+        openBookmarkUrl(node.url, true);
       }
     });
 
-    
   }
 
   return nodeEl;
@@ -895,10 +1085,12 @@ function renderTreeView() {
 async function handleTreeSearch(query) {
   const trimmed = (query || '').trim();
   if (!trimmed) {
+    clearKeyboardFocus();
     renderTreeView();
     return;
   }
 
+  clearKeyboardFocus();
   try {
     const results = await chrome.bookmarks.search(trimmed);
     treeList.innerHTML = '';
@@ -936,12 +1128,19 @@ async function handleTreeSearch(query) {
 
       itemEl.appendChild(infoEl);
 
+      itemEl.addEventListener('mouseenter', () => {
+        setKeyboardFocus(itemEl, false);
+      });
+
       itemEl.addEventListener('click', (e) => {
-        if (e.ctrlKey || e.metaKey) {
-          chrome.tabs.create({ url: item.url, active: false });
-        } else {
-          chrome.tabs.update({ url: item.url });
-          window.close();
+        e.preventDefault();
+        openBookmarkUrl(item.url, e.ctrlKey || e.metaKey);
+      });
+
+      itemEl.addEventListener('auxclick', (e) => {
+        if (e.button === 1) {
+          e.preventDefault();
+          openBookmarkUrl(item.url, true);
         }
       });
 
@@ -957,6 +1156,7 @@ async function handleTreeSearch(query) {
 // 3. 模式切换
 // ----------------------------------------------------
 function applyViewMode(mode) {
+  clearKeyboardFocus();
   currentViewMode = mode;
   try {
     localStorage.setItem('bookmark_view_mode_', mode);
@@ -1526,15 +1726,174 @@ settingsModal.addEventListener('keydown', (e) => {
   }
 });
 
-// 快捷键 Ctrl+F
+// ----------------------------------------------------
+// 全局键盘快捷键与无缝导航
+// ----------------------------------------------------
 document.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+  // 1. Ctrl+F / Cmd+F 聚焦搜索框
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
     e.preventDefault();
     const input = document.getElementById('cascade-search-input') || treeSearchInput;
     if (input) {
       input.focus();
       input.select();
     }
+    return;
+  }
+
+  // 2. 如果模态对话框处于显示状态，交由模态框本身处理，不触发列表导航
+  const editModal = document.getElementById('edit-modal');
+  const settingsModal = document.getElementById('settings-modal');
+  if ((editModal && !editModal.classList.contains('hidden')) || 
+      (settingsModal && !settingsModal.classList.contains('hidden'))) {
+    return;
+  }
+
+  // 3. 如果右键菜单处于显示状态，优先处理右键菜单
+  const bookmarkMenu = document.getElementById('bookmark-context-menu');
+  const folderMenu = document.getElementById('folder-context-menu');
+  const isContextMenuOpen = (bookmarkMenu && !bookmarkMenu.classList.contains('hidden')) ||
+                            (folderMenu && !folderMenu.classList.contains('hidden'));
+  if (isContextMenuOpen) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      hideContextMenu();
+    }
+    return;
+  }
+
+  const cascadeInput = document.getElementById('cascade-search-input');
+  const treeInput = document.getElementById('tree-search-input');
+  const isInputFocused = (document.activeElement === cascadeInput || document.activeElement === treeInput);
+  const activeInput = isInputFocused ? document.activeElement : null;
+
+  // 4. 当焦点在搜索框内时的键盘导航
+  if (isInputFocused && activeInput) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const items = getActiveNavigationItems();
+      if (items.length > 0) {
+        activeInput.blur();
+        setKeyboardFocus(items[0]);
+      }
+      return;
+    }
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (keyboardFocusedEl) {
+        triggerItemAction(keyboardFocusedEl, e.ctrlKey || e.metaKey);
+      } else {
+        const items = getActiveNavigationItems();
+        if (items.length > 0) {
+          triggerItemAction(items[0], e.ctrlKey || e.metaKey);
+        }
+      }
+      return;
+    }
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (activeInput.value) {
+        activeInput.value = '';
+        if (activeInput === cascadeInput) {
+          const clearBtn = activeInput.nextElementSibling;
+          if (clearBtn) clearBtn.classList.add('hidden');
+          handleCascadeSearch('');
+        } else {
+          const clearBtn = document.getElementById('clear-tree-search');
+          if (clearBtn) clearBtn.classList.add('hidden');
+          handleTreeSearch('');
+        }
+      } else {
+        window.close();
+      }
+      return;
+    }
+
+    return;
+  }
+
+  // 5. 焦点在列表项或窗口中的键盘导航
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    const items = getActiveNavigationItems();
+    if (items.length === 0) return;
+    if (!keyboardFocusedEl || !items.includes(keyboardFocusedEl)) {
+      setKeyboardFocus(items[0]);
+    } else {
+      const idx = items.indexOf(keyboardFocusedEl);
+      const nextIdx = (idx + 1) % items.length;
+      setKeyboardFocus(items[nextIdx]);
+    }
+    return;
+  }
+
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    const items = getActiveNavigationItems();
+    if (items.length === 0) return;
+    if (!keyboardFocusedEl || !items.includes(keyboardFocusedEl)) {
+      setKeyboardFocus(items[items.length - 1]);
+    } else {
+      const idx = items.indexOf(keyboardFocusedEl);
+      if (idx === 0) {
+        const currentPanel = keyboardFocusedEl.closest('.pmb-panel');
+        const depth = parseInt(currentPanel?.dataset?.depth || '0', 10);
+        if (depth === 0 || currentViewMode === 'tree' || isSearching) {
+          clearKeyboardFocus();
+          const targetInput = (currentViewMode === 'cascade') ? cascadeInput : treeInput;
+          if (targetInput) {
+            targetInput.focus();
+            targetInput.select();
+          }
+          return;
+        }
+        setKeyboardFocus(items[items.length - 1]);
+      } else {
+        setKeyboardFocus(items[idx - 1]);
+      }
+    }
+    return;
+  }
+
+  if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    handleNavigateRight();
+    return;
+  }
+
+  if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    handleNavigateLeft();
+    return;
+  }
+
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (keyboardFocusedEl) {
+      triggerItemAction(keyboardFocusedEl, e.ctrlKey || e.metaKey);
+    } else {
+      const items = getActiveNavigationItems();
+      if (items.length > 0) {
+        triggerItemAction(items[0], e.ctrlKey || e.metaKey);
+      }
+    }
+    return;
+  }
+
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    if (currentViewMode === 'cascade' && !isSearching) {
+      const currentPanel = keyboardFocusedEl ? keyboardFocusedEl.closest('.pmb-panel') : null;
+      const depth = parseInt(currentPanel?.dataset?.depth || '0', 10);
+      if (depth > 0) {
+        handleNavigateRight();
+        return;
+      }
+    }
+    window.close();
+    return;
   }
 });
 

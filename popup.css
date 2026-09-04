@@ -278,6 +278,24 @@ html, body {
   color: #ffffff !important;
 }
 
+/* 全键盘极速导航高亮 */
+.pmb-item.keyboard-focused,
+.search-item.keyboard-focused,
+.node-row.keyboard-focused {
+  background-color: var(--bg-selected) !important;
+  outline: 1.5px solid var(--active-blue) !important;
+  outline-offset: -1.5px;
+  position: relative;
+  z-index: 2;
+}
+
+.pmb-item.active.keyboard-focused {
+  background-color: var(--active-orange) !important;
+  outline: 2px solid #ffffff !important;
+  outline-offset: -2px;
+  box-shadow: 0 0 0 1.5px var(--active-blue) !important;
+}
+
 .pmb-item.other-bookmarks-item .item-title {
   color: var(--active-orange);
   font-weight: 500;
