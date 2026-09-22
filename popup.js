@@ -6,7 +6,7 @@ const DEFAULT_SETTINGS = {
   itemHeight: 22,
   fontSize: 12,
   openTarget: 'current', // 'current' | 'new-active' | 'new-bg'
-  hoverDelay: 50, // 0 | 50 | 140 | -1 (click only)
+  hoverDelay: 80, // 0 | 80 | 160 | -1 (click only)
   showOtherBookmarks: true,
   prettifySeparators: true
 };
@@ -49,6 +49,64 @@ async function saveUserSettings(newSettings) {
     }
   } catch (e) {}
   loadBookmarkTree();
+}
+
+// ----------------------------------------------------
+// 鼠标斜向移动防误触算法 (Menu Aim Safe Triangle)
+// ----------------------------------------------------
+const mouseHistory = [];
+
+document.addEventListener('mousemove', (e) => {
+  const now = Date.now();
+  mouseHistory.push({ x: e.clientX, y: e.clientY, time: now });
+  // 只保留最近 200ms 内的轨迹
+  while (mouseHistory.length > 0 && now - mouseHistory[0].time > 200) {
+    mouseHistory.shift();
+  }
+});
+
+function isPointInTriangle(p, a, b, c) {
+  const v0 = [c.x - a.x, c.y - a.y];
+  const v1 = [b.x - a.x, b.y - a.y];
+  const v2 = [p.x - a.x, p.y - a.y];
+
+  const dot00 = v0[0] * v0[0] + v0[1] * v0[1];
+  const dot01 = v0[0] * v1[0] + v0[1] * v1[1];
+  const dot02 = v0[0] * v2[0] + v0[1] * v2[1];
+  const dot11 = v1[0] * v1[0] + v1[1] * v1[1];
+  const dot12 = v1[0] * v2[0] + v1[1] * v2[1];
+
+  const denom = (dot00 * dot11 - dot01 * dot01);
+  if (denom === 0) return false;
+  const invDenom = 1 / denom;
+  const u = (dot11 * dot02 - dot01 * dot12) * invDenom;
+  const v = (dot00 * dot12 - dot01 * dot02) * invDenom;
+
+  return (u >= 0) && (v >= 0) && (u + v <= 1);
+}
+
+function isMouseMovingToSubmenu(depth) {
+  if (mouseHistory.length < 2) return false;
+  const childPanel = panelsContainer.querySelector(`.pmb-panel[data-depth="${depth + 1}"]`);
+  if (!childPanel) return false;
+
+  const currentLoc = mouseHistory[mouseHistory.length - 1];
+  const prevLoc = mouseHistory[0];
+
+  const dx = currentLoc.x - prevLoc.x;
+  const dy = currentLoc.y - prevLoc.y;
+
+  // 必须有明确的向左移动 (dx <= -2)，如果是垂直移动或向右移动则不是去子菜单
+  if (dx > -2) return false;
+  if (Math.abs(dy) > Math.abs(dx) * 2.5) return false;
+
+  const childRect = childPanel.getBoundingClientRect();
+  const offset = 15; // 边缘容差
+  const p1 = prevLoc;
+  const p2 = { x: childRect.right, y: childRect.top - offset };
+  const p3 = { x: childRect.right, y: childRect.bottom + offset };
+
+  return isPointInTriangle(currentLoc, p1, p2, p3);
 }
 
 let bookmarkTreeData = [];
@@ -629,24 +687,35 @@ function populatePanelList(listEl, folderNode, depth) {
       arrowEl.textContent = ICONS.arrowLeft;
       itemEl.appendChild(arrowEl);
 
-      // 悬停逻辑 (按配置延时)
+      // 悬停逻辑 (按配置延时并启用斜向防误触保护)
       itemEl.addEventListener('mouseenter', () => {
         setKeyboardFocus(itemEl, false);
         if (isSearching) return;
         clearTimeout(hoverCloseTimer);
         clearTimeout(hoverOpenTimer);
-        if (userSettings.hoverDelay >= 0) {
-          hoverOpenTimer = setTimeout(() => {
-            listEl.querySelectorAll('.pmb-item').forEach(el => el.classList.remove('active'));
-            itemEl.classList.add('active');
-            appendCascadePanel(item, depth + 1);
-          }, userSettings.hoverDelay);
+
+        // 如果当前项本来就是已经激活展开的项，无需重复操作
+        if (openCascadeFolderIds[depth] === item.id) return;
+
+        if (userSettings.hoverDelay < 0) return;
+
+        let delay = userSettings.hoverDelay;
+        if (isMouseMovingToSubmenu(depth)) {
+          delay = Math.max(160, userSettings.hoverDelay + 80);
         }
+
+        hoverOpenTimer = setTimeout(() => {
+          listEl.querySelectorAll('.pmb-item').forEach(el => el.classList.remove('active'));
+          itemEl.classList.add('active');
+          appendCascadePanel(item, depth + 1);
+        }, delay);
       });
 
       itemEl.addEventListener('click', (e) => {
         e.stopPropagation();
         setKeyboardFocus(itemEl, false);
+        clearTimeout(hoverCloseTimer);
+        clearTimeout(hoverOpenTimer);
         listEl.querySelectorAll('.pmb-item').forEach(el => el.classList.remove('active'));
         itemEl.classList.add('active');
         appendCascadePanel(item, depth + 1);
@@ -670,6 +739,12 @@ function populatePanelList(listEl, folderNode, depth) {
         if (isSearching) return;
         clearTimeout(hoverOpenTimer);
         clearTimeout(hoverCloseTimer);
+
+        let delay = 140;
+        if (isMouseMovingToSubmenu(depth)) {
+          delay = 240;
+        }
+
         hoverCloseTimer = setTimeout(() => {
           listEl.querySelectorAll('.pmb-item').forEach(el => el.classList.remove('active'));
           const panels = panelsContainer.querySelectorAll('.pmb-panel');
@@ -679,7 +754,7 @@ function populatePanelList(listEl, folderNode, depth) {
             }
           });
           openCascadeFolderIds = openCascadeFolderIds.slice(0, depth);
-        }, 140);
+        }, delay);
       });
 
       // 按照用户设置打开目标
@@ -743,6 +818,12 @@ function appendCascadePanel(folderNode, depth) {
   panelEl.className = 'pmb-panel';
   panelEl.dataset.depth = depth;
   panelEl.dataset.folderId = folderNode.id || '';
+
+  // 鼠标进入子面板时立即锁定，取消父级的切换或关闭定时器
+  panelEl.addEventListener('mouseenter', () => {
+    clearTimeout(hoverOpenTimer);
+    clearTimeout(hoverCloseTimer);
+  });
 
   // 1. 面板头部
   const headerEl = document.createElement('div');
