@@ -63,15 +63,33 @@
 
 ## 🚀 安装指南
 
-1. **下载或克隆本仓库源码**：
+### 方式一：下载已打包安装包（推荐普通用户，开箱即用）
+
+1. **下载最新发布包**：
+   - 前往 [GitHub Releases 发行版页面](https://github.com/evanhy/bookmark-sidepanel/releases)。
+   - 在最新版本的 Assets 中下载 **`quick-bookmarks-vx.x.x.zip`**。
+2. **解压文件**：
+   - 将下载的 `.zip` 压缩包解压到本地固定文件夹（例如：文档目录下的 `quick-bookmarks`，安装后请勿删除该文件夹）。
+3. **在 Chrome 中加载扩展**：
+   - 打开 Chrome 浏览器，在地址栏输入并回车访问：
+     ```text
+     chrome://extensions/
+     ```
+   - 打开页面右上角的 **「开发者模式 (Developer mode)」** 开关。
+   - 点击页面左上角的 **「加载已解压的扩展程序 (Load unpacked)」**。
+   - 在弹出的文件选择器中，选择刚刚解压的扩展文件夹，即可完成安装并立即使用！
+
+---
+
+### 方式二：克隆源码安装（适合开发者）
+
+1. **克隆本仓库源码**：
    ```bash
    git clone https://github.com/evanhy/bookmark-sidepanel.git
    ```
 2. **在 Chrome 中加载扩展**：
-   - 打开 Chrome 浏览器，在地址栏访问：`chrome://extensions/`
-   - 打开右上角的 **「开发者模式 (Developer mode)」** 开关。
-   - 点击左上角的 **「加载已解压的扩展程序 (Load unpacked)」**。
-   - 选择本项目的根目录文件夹 `bookmark-sidepanel` 即可安装完成。
+   - 打开 Chrome 访问 `chrome://extensions/` 并开启右上角「开发者模式」。
+   - 点击「加载已解压的扩展程序」，选择本地克隆的 `bookmark-sidepanel` 目录即可。
 
 ---
 
