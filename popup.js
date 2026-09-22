@@ -63,6 +63,19 @@ document.addEventListener('mousemove', (e) => {
   while (mouseHistory.length > 0 && now - mouseHistory[0].time > 200) {
     mouseHistory.shift();
   }
+  // 鼠标移动时清理键盘遗留的蓝色高亮框
+  if (keyboardFocusedEl) {
+    clearKeyboardFocus();
+  }
+});
+
+// 鼠标移出浏览器弹窗时清理焦点框
+document.addEventListener('mouseleave', () => {
+  clearKeyboardFocus();
+});
+
+window.addEventListener('blur', () => {
+  clearKeyboardFocus();
 });
 
 function isPointInTriangle(p, a, b, c) {
@@ -689,7 +702,6 @@ function populatePanelList(listEl, folderNode, depth) {
 
       // 悬停逻辑 (按配置延时并启用斜向防误触保护)
       itemEl.addEventListener('mouseenter', () => {
-        setKeyboardFocus(itemEl, false);
         if (isSearching) return;
         clearTimeout(hoverCloseTimer);
         clearTimeout(hoverOpenTimer);
@@ -713,7 +725,6 @@ function populatePanelList(listEl, folderNode, depth) {
 
       itemEl.addEventListener('click', (e) => {
         e.stopPropagation();
-        setKeyboardFocus(itemEl, false);
         clearTimeout(hoverCloseTimer);
         clearTimeout(hoverOpenTimer);
         listEl.querySelectorAll('.pmb-item').forEach(el => el.classList.remove('active'));
@@ -735,7 +746,6 @@ function populatePanelList(listEl, folderNode, depth) {
       itemEl.appendChild(nameEl);
 
       itemEl.addEventListener('mouseenter', () => {
-        setKeyboardFocus(itemEl, false);
         if (isSearching) return;
         clearTimeout(hoverOpenTimer);
         clearTimeout(hoverCloseTimer);
@@ -996,10 +1006,6 @@ async function handleCascadeSearch(query) {
 
       itemEl.appendChild(infoEl);
 
-      itemEl.addEventListener('mouseenter', () => {
-        setKeyboardFocus(itemEl, false);
-      });
-
       itemEl.addEventListener('click', (e) => {
         e.preventDefault();
         openBookmarkUrl(item.url, e.ctrlKey || e.metaKey);
@@ -1126,10 +1132,6 @@ function createTreeNode(node, depth = 0) {
 
     nodeEl.appendChild(rowEl);
 
-    rowEl.addEventListener('mouseenter', () => {
-      setKeyboardFocus(rowEl, false);
-    });
-
     rowEl.addEventListener('click', (e) => {
       e.preventDefault();
       openBookmarkUrl(node.url, e.ctrlKey || e.metaKey);
@@ -1208,10 +1210,6 @@ async function handleTreeSearch(query) {
       infoEl.appendChild(urlEl);
 
       itemEl.appendChild(infoEl);
-
-      itemEl.addEventListener('mouseenter', () => {
-        setKeyboardFocus(itemEl, false);
-      });
 
       itemEl.addEventListener('click', (e) => {
         e.preventDefault();
